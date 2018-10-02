@@ -18,19 +18,19 @@ kaiming(::Type{T}, h, w, i, o) where {T<:AbstractFloat} = T(sqrt(2 / (w * h * o)
 glorot_uniform(::Type{T}, dims...) where {T<:AbstractFloat} = (rand(T, dims...) .- T(0.5)) .* sqrt(T(24.0)/(sum(dims)))
 
 # Classify MNIST digits with a convolutional network
-function loadMNIST(batch_size::Int = 1000)
+function loadMNIST(::Type{T}, batch_size::Int = 1000) where {T<:AbstractFloat}
     imgs = MNIST.images()
 
     labels = onehotbatch(MNIST.labels(), 0:9)
 
     # Partition into batches of size 1,000
-    train = [(Float32.(cat(float.(imgs[i])..., dims = 4)), labels[:,i])
+    train = [(T.(cat(float.(imgs[i])..., dims = 4)), labels[:,i])
             for i in partition(1:60_000, batch_size)]
 
     train = gpu.(train)
 
     # Prepare test set (first 1,000 images)
-    tX = Float32.(cat(float.(MNIST.images(:test)[1:batch_size])..., dims = 4)) |> gpu
+    tX = T.(cat(float.(MNIST.images(:test)[1:batch_size])..., dims = 4)) |> gpu
     tY = onehotbatch(MNIST.labels(:test)[1:batch_size], 0:9) |> gpu
 
     return (train, tX, tY)
@@ -47,20 +47,20 @@ function (::Type{Dense})(::Type{T}, in::Integer, out::Integer, σ = identity;
 end
 
 # Model
-mutable struct Model{M}
+mutable struct Model{T,M}
     m::M
+    (::Type{Model{T}})() where {T<:AbstractFloat} = new{T,Chain}(Chain(
+        Conv(T, (5, 5), 1=>32, relu),
+        x -> maxpool(x, (2, 2)),
+        Conv(T, (5, 5), 32=>64, relu),
+        x -> maxpool(x, (2, 2)),
+        x -> reshape(x, :, size(x, 4)),
+        Dense(T, 1024, 1024, relu),
+        Dropout(0.5),
+        Dense(T, 1024, 10),
+        softmax) |> gpu
+    )
 end
-(::Type{Model})() = Model(Chain(
-    Conv(Float32, (5, 5), 1=>32, relu),
-    x -> maxpool(x, (2, 2)),
-    Conv(Float32, (5, 5), 32=>64, relu),
-    x -> maxpool(x, (2, 2)),
-    x -> reshape(x, :, size(x, 4)),
-    Dense(Float32, 1024, 1024, relu),
-    Dropout(0.5),
-    Dense(Float32, 1024, 10),
-    softmax) |> gpu
-)
 
 # loss(x, y) = crossentropy(m(x), y)
 mutable struct Loss{M} <: Function
@@ -83,9 +83,13 @@ function train!(m::Model, traindata; cb = identity)
 end
 
 # save Model (weights only)
-function savemodel(m::Model)
+function savemodel(m::Model{Float32})
     ts = Dates.format(now(), dateformat"yyyymmddHHMMSS")
     savemodel(m, "model-flux-f32_$(ts).bson")
+end
+function savemodel(m::Model)
+    ts = Dates.format(now(), dateformat"yyyymmddHHMMSS")
+    savemodel(m, "model-flux-f64_$(ts).bson")
 end
 function savemodel(m::Model, filename::AbstractString)
     weights = Tracker.data.(params(m.m))
