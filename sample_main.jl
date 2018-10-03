@@ -6,7 +6,7 @@ function main(args)
     traindata, tX, tY = FluxMNIST.loadMNIST(Float32)
     accuracy = FluxMNIST.Accuracy(model.m)
     evalcb = throttle(() -> @show(accuracy(tX, tY)), 10)
-    @time FluxMNIST.train!(model, traindata; cb=evalcb)
+    @time FluxMNIST.train!(model, traindata; epochs=1, cb=evalcb)
     @show(accuracy(tX, tY))
     FluxMNIST.savemodel(model)
 end

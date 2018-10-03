@@ -1,12 +1,14 @@
 module FluxMNIST
 
 using Flux, Flux.Data.MNIST, Statistics
-using Flux: onehotbatch, onecold, crossentropy, throttle
+using Flux: onehotbatch, onecold, crossentropy, throttle, @epochs
 import Flux: glorot_uniform
 using Base.Iterators: repeated, partition
 using BSON: @save
 using Dates
 # using CuArrays
+
+include("util.jl")
 
 #=
 Initialization is from
@@ -23,11 +25,10 @@ function loadMNIST(::Type{T}, batch_size::Int = 1000) where {T<:AbstractFloat}
 
     labels = onehotbatch(MNIST.labels(), 0:9)
 
-    # Partition into batches of size 1,000
-    train = [(T.(cat(float.(imgs[i])..., dims = 4)), labels[:,i])
-            for i in partition(1:60_000, batch_size)]
-
-    train = gpu.(train)
+    _train = BatchProducer(T.(cat((cat(float.(imgs[idxs])..., dims = 4)
+                                   for idxs in partition(1:60_000, batch_size))..., dims=4)),
+                           labels, batch_size, true)
+    train = (gpu.(minibatch) for minibatch in _train)
 
     # Prepare test set (first 1,000 images)
     tX = T.(cat(float.(MNIST.images(:test)[1:batch_size])..., dims = 4)) |> gpu
@@ -75,11 +76,10 @@ end
 (accuracy::Accuracy)(x, y) = mean(onecold(accuracy.m(x)) .== onecold(y))
 
 # train!
-function train!(m::Model, traindata; cb = identity)
-    # TODO @epoch
+function train!(m::Model, traindata; epochs = 10, cb = identity)
     loss = Loss(m.m)
     opt = ADAM(params(m.m))  # TODO: patameterize
-    Flux.train!(loss, traindata, opt; cb=cb)
+    @epochs epochs Flux.train!(loss, traindata, opt; cb=cb)
 end
 
 # save Model (weights only)
