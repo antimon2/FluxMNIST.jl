@@ -19,32 +19,23 @@ function main(args::Vector{<:AbstractString}=[])
     s.description="FluxMNIST.jl sample for Float32"
     s.exc_handler=ArgParse.debug_handler
     @add_arg_table s begin
-        # ("--seed"; arg_type=Int; default=-1; help="random number seed: use a nonnegative int for repeatable results")
         ("--batchsize"; arg_type=Int; default=1000; help="minibatch size")
         ("--epochs"; arg_type=Int; default=10; help="number of epochs for training")
         ("--output"; arg_type=String; default="./"; help="output dir")
-        # ("--hidden"; nargs='*'; arg_type=Int; help="sizes of hidden layers, e.g. --hidden 128 64 for a net with two hidden layers")
-        # ("--lr"; arg_type=Float64; default=0.5; help="learning rate")
-        # ("--winit"; arg_type=Float64; default=0.1; help="w initialized with winit*randn()")
-        # ("--fast"; action=:store_true; help="skip loss printing for faster run")
-        # ("--atype"; default=(gpu()>=0 ? "KnetArray{Float32}" : "Array{Float32}"); help="array type: Array for cpu, KnetArray for gpu")
-        # ("--gcheck"; arg_type=Int; default=0; help="check N random gradients per parameter")
-        # These are to experiment with sparse arrays
-        # ("--xtype"; help="input array type: defaults to atype")
-        # ("--ytype"; help="output array type: defaults to atype")
+        ("--fp64"; action=:store_true; help="use `Float64` (default: `Float32`)")
     end
-    isa(args, AbstractString) && (args=split(args))
     if in("--help", args) || in("-h", args)
         ArgParse.show_help(s; exit_when_done=false)
         return
     end
-    o = parse_args(args, s; as_symbols=true)
-    batchsize = o[:batchsize]
-    epochs = o[:epochs]
-    outputdir = o[:output]
+    parsed_args = parse_args(args, s; as_symbols=true)
+    batchsize = parsed_args[:batchsize]
+    epochs = parsed_args[:epochs]
+    outputdir = parsed_args[:output]
+    FType = parsed_args[:fp64] ? Float64 : Float32
 
-    model = FluxMNIST.Model{Float32}()
-    traindata, tX, tY = FluxMNIST.loadMNIST(Float32, batchsize)
+    model = FluxMNIST.Model{FType}()
+    traindata, tX, tY = FluxMNIST.loadMNIST(FType, batchsize)
     accuracy = FluxMNIST.Accuracy(model.m)
     evalcb = throttle(() -> @show(accuracy(tX, tY)), 10)
     @time FluxMNIST.train!(model, traindata; epochs=epochs, cb=evalcb)
